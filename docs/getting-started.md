@@ -1,73 +1,87 @@
+# Getting started
+
 ## Install
 
+`opera-utils` is available on conda-forge and PyPI:
 
-`opera-utils` is available on conda-forge:
+=== "conda / mamba"
+
+    ```bash
+    mamba install -c conda-forge opera-utils
+    ```
+
+=== "pip"
+
+    ```bash
+    pip install opera-utils
+    ```
+
+The base install is intentionally light. Format-specific functionality is opt-in through extras:
+
+| Extra | Unlocks | Pulls in |
+| --- | --- | --- |
+| `opera-utils[geopandas]` | Frame/burst *geometries* as GeoDataFrames, `disp-s1-intersects` CLI | `geopandas`, `pyogrio` |
+| `opera-utils[asf]` | Searching/downloading CSLC, RTC, and static-layer products from ASF | `asf_search` |
+| `opera-utils[disp]` | Searching, downloading, and reformatting DISP-S1 products | `xarray`, `dask`, `rasterio`, `rioxarray`, `zarr`, `h5netcdf`, `fsspec`, `s3fs`, `botocore`, `tqdm` |
+| `opera-utils[nisar]` | Searching and downloading NISAR GSLC products | `fsspec`, `s3fs`, `aiohttp`, `tqdm` |
+| `opera-utils[tropo]` | Cropping/applying OPERA TROPO tropospheric delay corrections | everything in `disp`, plus `scipy` |
+| `opera-utils[all]` | Everything above | — |
 
 ```bash
-mamba install -c conda-forge opera-utils
+pip install "opera-utils[disp]"     # just DISP-S1 support
+pip install "opera-utils[all]"      # everything
 ```
 
+!!! tip "Which extra do I need?"
+    If you're not sure yet, start with `opera-utils[all]` — the extras mostly add dependencies for format-specific I/O (xarray, rasterio, geopandas), not core logic, so installing them all has little downside outside of image size.
 
-## Usage
+## Set up data access credentials
 
-Example usage:
+Downloading real products (as opposed to just looking up frame/burst metadata) requires a free [NASA Earthdata Login](https://urs.earthdata.nasa.gov/users/new). The simplest setup is a `~/.netrc` entry:
 
+```text title="~/.netrc"
+machine urs.earthdata.nasa.gov
+    login <your_username>
+    password <your_password>
+```
 
-## Setup for Developers
+`opera-utils` also accepts `EARTHDATA_USERNAME`/`EARTHDATA_PASSWORD` environment variables for most (but not all) code paths — see [Set up Earthdata and AWS credentials](how-to-guides.md#set-up-earthdata-and-aws-credentials) for the full picture, including direct S3 access.
 
-To contribute to the development of `opera-utils`, you can fork the repository and install the package in development mode.
-We encourage new features to be developed on a new branch of your fork, and then submitted as a pull request to the main repository.
+## 5-minute quickstart
 
-To install locally,
+These first three examples only need the base install — no extras, no credentials.
 
-1. Download source code:
+**Parse a Sentinel-1 burst ID out of a product filename:**
+
+```pycon
+>>> import opera_utils
+>>> opera_utils.get_burst_id(
+...     "OPERA_L2_CSLC-S1_T087-185683-IW2_20230322T161649Z_20240504T185235Z_S1A_VV_v1.1.h5"
+... )
+'t087_185683_iw2'
+```
+
+**Look up the bursts and bounding box that make up a DISP-S1 frame** (the first call downloads and caches a small database file from GitHub):
+
+```pycon
+>>> import opera_utils
+>>> opera_utils.get_burst_ids_for_frame(11114)
+['t042_088905_iw1', 't042_088905_iw2', ..., 't042_088913_iw3']
+>>> opera_utils.get_frame_bbox(11114)
+(32610, Bbox(left=546450.0, bottom=4204110.0, right=833790.0, top=4409070.0))
+```
+
+**Same lookup from the command line:**
+
 ```bash
-git clone https://github.com/opera-adt/opera-utils
-```
-2. Install dependencies:
-```bash
-mamba env create --file environment.yml
+opera-utils disp-s1-frame-bbox 11114
+# {"epsg": 32610, "bbox": [546450.0, 4204110.0, 833790.0, 4409070.0]}
 ```
 
-or if you have an existing environment:
-```bash
-mamba env update --name my-existing-env --file environment.yml
-```
+Run `opera-utils --help` to see every subcommand available in your current install (the list grows as you install extras).
 
-3. Install `opera-utils` via pip:
-```bash
-mamba activate opera-utils-env
-python -m pip install -e .
-```
+## Next steps
 
-
-The extra packages required for testing and building the documentation can be installed:
-```bash
-# Run "pip install -e" to install with extra development requirements
-python -m pip install -e ".[docs,test]"
-```
-
-We use [`pre-commit`](https://pre-commit.com/) to automatically run linting and formatting:
-```bash
-# Get pre-commit hooks so that linting/formatting is done automatically
-pre-commit install
-```
-This will set up the linters and formatters to run on any staged files before you commit them.
-
-After making functional changes, you can rerun the existing tests and any new ones you have added using:
-```bash
-python -m pytest
-```
-
-### Creating Documentation
-
-We use [MKDocs](https://www.mkdocs.org/) to generate the documentation.
-The reference documentation is generated from the code docstrings using [mkdocstrings](mkdocstrings.github.io/).
-
-When adding new documentation, you can build and serve the documentation locally using:
-
-```
-mkdocs serve
-```
-then open http://localhost:8000 in your browser.
-Creating new files or updating existing files will automatically trigger a rebuild of the documentation while `mkdocs serve` is running.
+- Walk through a full workflow in [Tutorials](tutorials.md) — from finding a frame to plotting a displacement time series or forming a NISAR interferogram.
+- Jump straight to a specific task in [How-to guides](how-to-guides.md).
+- Read [Background theory](background-theory.md) to understand bursts, frames, and why DISP-S1 stacks need to be "rebased" before analysis.

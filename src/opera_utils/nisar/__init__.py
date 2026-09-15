@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ._datasets import fetch_nisar_frame_to_bounds_file
 from ._download import download_gslcs, run_download
 from ._geometry import prepare_incidence_angle
 from ._gunw_search import search_gunw
@@ -31,6 +32,7 @@ __all__ = [
     "OutOfBoundsError",
     "UrlType",
     "download_gslcs",
+    "fetch_nisar_frame_to_bounds_file",
     "find_intersecting_frames",
     "get_frame_latlon_bounds",
     "get_gslc_mask",

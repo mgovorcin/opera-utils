@@ -31,6 +31,12 @@ plugins:
     include: ["*.ipynb"]
 
 markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - tables
+  - toc:
+      permalink: true
   - pymdownx.arithmatex:
       generic: true
 
