@@ -13,8 +13,15 @@ NISAR_FRAME_TO_BOUNDS_FILENAME = (
 
 NISAR_POOCH = pooch.create(
     path=pooch.os_cache("opera_utils"),
-    # TODO: update to a release URL once the file is published
-    base_url="https://github.com/opera-adt/disp-nisar/tree/main/configs/static_ancillary_files/",
+    # TODO: update to a release URL once the file is published.
+    # Must be a raw-content URL: github.com/.../tree/... serves the HTML file
+    # viewer, so pooch downloads a web page and rejects it against the hash
+    # below ("does not match the known hash"), with no hint that the URL is at
+    # fault. The hash here is correct for the JSON itself.
+    base_url=(
+        "https://raw.githubusercontent.com/opera-adt/disp-nisar/main/"
+        "configs/static_ancillary_files/"
+    ),
     version=NISAR_FRAME_DB_VERSION,
     version_dev="main",
     env="OPERA_UTILS_DATA_DIR",
