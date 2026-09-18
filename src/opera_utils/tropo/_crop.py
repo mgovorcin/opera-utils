@@ -1,4 +1,4 @@
-"""Crop and OPERA TROPO products for an area of interest."""
+"""Crop OPERA TROPO products for an area of interest and interpolate them in time."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 import pandas as pd
 import rasterio as rio
@@ -21,6 +22,9 @@ from ._helpers import (
     _interp_in_time,
     _open_crop,
 )
+from ._motion import DEFAULT_MOTION_WEIGHT, interp_in_time_motion
+
+DEFAULT_MOTION_MARGIN_DEG = 5.0
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +38,9 @@ def _process_one_datetime(
     output_dir: Path,
     skip_time_interpolation: bool,
     debug: bool = False,
+    time_interpolation: Literal["linear", "motion"] = "linear",
+    motion_weight: float = DEFAULT_MOTION_WEIGHT,
+    motion_margin_deg: float = DEFAULT_MOTION_MARGIN_DEG,
 ) -> tuple[datetime, str]:
     """Worker: process one datetime and write output file.
 
@@ -57,7 +64,15 @@ def _process_one_datetime(
     debug : bool
         Debug mode. If True, write debug info during processing.
         Default: False.
+    time_interpolation : {"linear", "motion"}
+        How to interpolate between the two bracketing products.
+    motion_weight : float
+        Weight of the motion-aware prediction when `time_interpolation="motion"`.
+    motion_margin_deg : float
+        Extra margin, in degrees, read around the bounds to track the motion.
 
+    Returns
+    -------
     tuple[datetime, str]
         (datetime, status)
         status is "ok" | "skipped" | "missing" | "error:<msg>"
@@ -76,20 +91,36 @@ def _process_one_datetime(
         except MissingTropoError:
             return (dt, "missing")
 
+        read_lat, read_lon = lat_bounds, lon_bounds
+        if time_interpolation == "motion":
+            # Weather moves ~300 km in 6 h: track it on a wider area, trim below
+            read_lat = (
+                min(lat_bounds[0] + motion_margin_deg, 90.0),
+                max(lat_bounds[1] - motion_margin_deg, -90.0),
+            )
+            read_lon = (
+                lon_bounds[0] - motion_margin_deg,
+                lon_bounds[1] + motion_margin_deg,
+            )
+
         if debug:
             tqdm.write(f"Cropping {early_url}")
-        ds0 = _open_crop(early_url, lat_bounds, lon_bounds, height_max)
+        ds0 = _open_crop(early_url, read_lat, read_lon, height_max)
         if debug:
             tqdm.write(f"Cropping {late_url}")
-        ds1 = _open_crop(late_url, lat_bounds, lon_bounds, height_max)
+        ds1 = _open_crop(late_url, read_lat, read_lon, height_max)
 
-        td_interp = _interp_in_time(
-            ds0,
-            ds1,
-            ds0.time.to_pandas().item(),
-            ds1.time.to_pandas().item(),
-            dt_pandas,
-        )
+        t0 = ds0.time.to_pandas().item()
+        t1 = ds1.time.to_pandas().item()
+        if time_interpolation == "motion":
+            td_interp = interp_in_time_motion(
+                ds0, ds1, t0, t1, dt_pandas, motion_weight=motion_weight
+            ).sel(
+                latitude=slice(lat_bounds[0], lat_bounds[1]),
+                longitude=slice(lon_bounds[0], lon_bounds[1]),
+            )
+        else:
+            td_interp = _interp_in_time(ds0, ds1, t0, t1, dt_pandas)
     else:
         idx = tropo_idx_series.index.get_indexer([dt_pandas], method="nearest")[0]
         closest_url = tropo_idx_series.values[idx]
@@ -121,6 +152,9 @@ def crop_tropo(
     height_max: float = 10000.0,
     margin_deg: float = 0.3,
     num_workers: int = 2,
+    time_interpolation: Literal["linear", "motion"] = "linear",
+    motion_weight: float = DEFAULT_MOTION_WEIGHT,
+    motion_margin_deg: float = DEFAULT_MOTION_MARGIN_DEG,
 ) -> None:
     """Crop OPERA TROPO products to AOI and interpolate to specific datetimes.
 
@@ -144,8 +178,35 @@ def crop_tropo(
         Additional margin in degrees around AOI bounds.
     num_workers : int
         Processes to use. Default: 2
+    time_interpolation : {"linear", "motion"}
+        How to interpolate between the two products bracketing each datetime.
+        "linear" (default) blends them pixel by pixel.  "motion" estimates how
+        the wet delay field moved between them and interpolates along that
+        motion, so that weather fronts are displaced instead of faded out; the
+        hydrostatic delay is still interpolated linearly.
+        See `opera_utils.tropo.interp_in_time_motion`.
+    motion_weight : float
+        Only for "motion": weight in [0, 1] of the motion-aware prediction
+        against the linear one.  0 is linear interpolation.
+    motion_margin_deg : float
+        Only for "motion": additional margin in degrees, on top of `margin_deg`,
+        read around the AOI to track the motion.  The output is trimmed back to
+        the AOI plus `margin_deg`.  Margins below about 3 degrees leave too little
+        context and give no benefit over linear interpolation.
 
     """
+    if time_interpolation not in ("linear", "motion"):
+        msg = (
+            f"time_interpolation must be 'linear' or 'motion', got {time_interpolation}"
+        )
+        raise ValueError(msg)
+    if time_interpolation == "motion" and skip_time_interpolation:
+        msg = "time_interpolation='motion' cannot be used with skip_time_interpolation"
+        raise ValueError(msg)
+    if not 0.0 <= motion_weight <= 1.0:
+        msg = f"motion_weight must be in [0, 1], got {motion_weight}"
+        raise ValueError(msg)
+
     output_dir.mkdir(exist_ok=True, parents=True)
 
     if file_bounds is not None:
@@ -190,6 +251,10 @@ def crop_tropo(
                         height_max,
                         output_dir,
                         skip_time_interpolation,
+                        False,
+                        time_interpolation,
+                        motion_weight,
+                        motion_margin_deg,
                     )
                 )
 
@@ -216,6 +281,9 @@ def crop_tropo(
                 height_max,
                 output_dir,
                 skip_time_interpolation,
+                time_interpolation=time_interpolation,
+                motion_weight=motion_weight,
+                motion_margin_deg=motion_margin_deg,
             )
 
     logger.info(

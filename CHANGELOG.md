@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased](https://github.com/opera-adt/opera-utils/compare/v0.23.0...HEAD)
 
+### Added
+
+- `tropo-crop`: optional motion-aware time interpolation of the wet delay (`time_interpolation="motion"`), which moves weather fronts between the 6-hourly TROPO products instead of fading them; linear interpolation stays the default. New functions `estimate_flow`, `interpolate_motion`, `interp_in_time_motion` in `opera_utils.tropo`.
+
 ## [0.23.0](https://github.com/opera-adt/opera-utils/compare/v0.22.1...v0.23.0) - 2025-06-16
 
 ### Added
