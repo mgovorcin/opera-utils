@@ -16,7 +16,7 @@ crop_tropo(
     datetimes=[acquisition_time],
     aoi_bounds=(-95.0, 34.0, -92.0, 36.0),
     time_interpolation="motion",   # default: "linear"
-    motion_weight=0.5,             # 0 = linear, 1 = motion-aware at face value
+    motion_weight=0.4,             # 0 = linear, 1 = motion-aware at face value
     motion_margin_deg=5.0,         # extra area read to track the motion, then trimmed
 )
 ```
@@ -80,7 +80,8 @@ first order.
    correlates with GNSS (r = +0.40) but overshoots by about two.
 2. **Blended half and half with linear it helps on every one of the ten dates**: 8.4 %
    lower point error, 6.4 % lower station-pair error. The weight was fitted on the
-   other nine dates each time and stayed between 0.44 and 0.50.
+   other nine dates each time and stayed between 0.44 and 0.50 (OpenCV prototype; the
+   library tracker's optimum is 0.40, see below).
 3. **The weather regime decides the gain.** Cool-season organised fronts: 13 % and
    11 %, better at 80 % of stations. Warm-season convective cases: 4 % and 3 %, better
    at 54 % of stations. The 23 Dec 2022 arctic front: 23 % and 20 %.
@@ -135,8 +136,57 @@ GNSS-scored gain station by station.*
 * **Tracking window.** Skill rises with the window size and levels off near a
   half-width of 400 to 550 km. The scipy implementation reaches 7.8 % against 8.6 %
   for an OpenCV prototype, without adding a dependency.
-* **`motion_weight = 0.5`.** From the measured correlation and slope the optimum is
-  near 0.45, and weight 1 is worse than linear.
+* **`motion_weight = 0.4`.** With the library tracker, GNSS gives the lowest error at
+  0.40 (7.8 % below linear, every date improved); 0.50 gives 7.6 % and a worse worst
+  case; above 0.55 some dates become worse than linear. The interferogram below asked
+  for 0.2 to 0.4.
+
+### A truth-free confidence weight was tested and not adopted
+
+Four signals computed from the two products alone were tested as a replacement for the
+fixed weight: how much warping improves their agreement, forward-backward consistency
+of the flow, tracked speed, and the size of the prediction. Tracked speed separates
+best: in the fastest fifth of cases GNSS follows the prediction with r = 0.60 and slope
+0.56, in the slowest fifth with r = 0.11 and slope 0.19. But the prediction is small
+wherever the speed is small, so a speed-dependent weight, cross-validated by date,
+gains 8.5 % against 7.7 % for a constant. Not enough to justify the extra parameter.
+
+## How far Sentinel-1 is from a product epoch
+
+Sentinel-1 flies a dawn-dusk orbit, so over the contiguous US it passes near 00 and
+12 UTC, close to the product epochs. Over one 12-day cycle (447 scenes) the distance
+from the nearest product has a median of 65 min and never exceeds 144 min: about
+45 min east of 95° W, about two hours west of 110° W. NISAR's orbit gives the same
+pattern. For that distribution the GNSS-scored interpolation error is 5.75 mm with
+linear and 5.31 mm with motion-aware interpolation. The option matters most in the
+western US.
+
+On ten dates chosen for strong weather, the two interpolations differ inside a
+Sentinel-1 footprint by a median of 1.4 mm (zenith, standard deviation). The difference
+exceeds 3 mm in 16 % of scenes and 5 mm in 4 %, and reaches 9 mm with more than 50 mm
+peak to peak. **It is a correction for specific acquisitions, not a general upgrade.**
+
+## One real interferogram
+
+The scene with the largest difference of 467 was tested against the OPERA DISP-S1
+product of frame F18904 (Los Angeles basin), 2 to 26 October 2020, both acquired
+113 min after the 12 UTC product.
+
+![interferogram test](img/tropo-motion/insar_test.jpg)
+
+| | residual RMS, mm line of sight, plane removed |
+|---|---:|
+| uncorrected | 19.5 |
+| linear interpolation | 15.1 |
+| motion-aware, weight 0.4 (default) | **14.7** |
+| motion-aware, weight 0.5 | 15.5 |
+| motion-aware, weight 1.0 | 22.6 |
+| best weight, 0.22 | 14.2 |
+
+The extra term that motion-aware interpolation adds correlates with what the linear
+correction leaves behind (r = +0.34, slope +0.23; slope +0.41 at scales below 15 km), so
+the skill is real, and at face value it makes the interferogram worse than no correction
+at all. One interferogram is an anecdote, but it agrees with GNSS on both points.
 
 ## Limits
 
@@ -144,7 +194,7 @@ GNSS-scored gain station by station.*
 * GNSS zenith delay averages over a cone of sky and is smoothed in time by the
   processing filter, which lowers the fitted slope. The best weight for an
   instantaneous SAR acquisition may be higher than 0.5.
-* No interferogram has been corrected with it yet.
+* One interferogram has been tested. A stack is needed.
 * Displacements beyond about 500 km in 6 h are outside the tracker's range.
 * Most of the residual wet delay error is variability that no global weather model
   contains. This option addresses the timing of resolved features only.

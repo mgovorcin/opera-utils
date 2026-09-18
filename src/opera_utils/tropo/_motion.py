@@ -18,9 +18,10 @@ Notes
   showed one motion field for the whole column to be as good as one per level.
 * The prediction is blended with plain linear interpolation through
   ``motion_weight``.  Scored against 5-minute GNSS over the contiguous US, the
-  pure motion-aware prediction (weight 1) overshoots by about a factor of two
-  because sharp features in the model are rarely in exactly the right place; a
-  weight near 0.5 reduced the error on every date tested.  Weight 0 is linear
+  pure motion-aware prediction (weight 1) overshoots by more than a factor of
+  two, because sharp features in the model are rarely in exactly the right
+  place.  A weight of 0.4 gave the lowest error and improved every date tested;
+  a Sentinel-1 interferogram asked for 0.2 to 0.4.  Weight 0 is linear
   interpolation.
 * A front travels roughly 300 km in 6 hours, so the fields must extend well
   beyond the area of interest.  `crop_tropo` reads a wider margin when motion
@@ -43,7 +44,7 @@ __all__ = [
 ]
 
 DEFAULT_FLOW_HEIGHT = 1500.0
-DEFAULT_MOTION_WEIGHT = 0.5
+DEFAULT_MOTION_WEIGHT = 0.4
 # Track motion on pixels of about this size, with a Lucas-Kanade window of
 # DEFAULT_FLOW_RADIUS such pixels.  Scored against GNSS, skill rose with the window
 # size and levelled off near these values: finer scales of a 6-hourly global model
