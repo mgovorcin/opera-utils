@@ -192,6 +192,7 @@ class TestInterpInTimeMotion:
         assert mot.total_delay.shape == lin.total_delay.shape
         assert mot.total_delay.attrs["time_interpolation"] == "motion"
         assert mot.total_delay.attrs["flow_height"] == 1500.0
+        assert mot.total_delay.attrs["long_name"] == "Zenith total delay"
 
     def test_zero_weight_equals_linear(self, tropo_pair):
         ds0, ds1, _, t0, t1 = tropo_pair

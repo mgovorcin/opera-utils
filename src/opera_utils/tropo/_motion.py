@@ -318,9 +318,12 @@ def interp_in_time_motion(
     out["total_delay"] = total + xr.DataArray(
         wet.astype(total.dtype), coords=wet0.coords, dims=wet0.dims
     )
-    out["total_delay"].attrs.update(
-        time_interpolation="motion",
-        motion_weight=motion_weight,
-        flow_height=float(wet0.height.values[k]),
-    )
+    # Arithmetic may carry over the description of the hydrostatic input
+    out["total_delay"].attrs = {
+        "long_name": "Zenith total delay",
+        "units": "meters",
+        "time_interpolation": "motion",
+        "motion_weight": float(motion_weight),
+        "flow_height": float(wet0.height.values[k]),
+    }
     return out
