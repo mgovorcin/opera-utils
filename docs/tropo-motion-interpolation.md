@@ -174,22 +174,26 @@ product of frame F18904 (Los Angeles basin), 2 to 26 October 2020, both acquired
 
 ![interferogram test](img/tropo-motion/insar_test.jpg)
 
-*(c) is what the linear correction leaves; (d) is the only thing the motion-aware method adds;
-(e) = (c) − 0.22 × (d). Panel (g) maps where that made the residual smaller (purple) or larger
-(orange): smaller at 56 % of pixels, mean absolute residual 11.5 → 10.5 mm. Panel (h) compares
-the two distributions.*
+*(b) and (c) are the two corrections, built from the same two products; (d) = (c) − (b) is
+where they disagree. (e) is what the linear correction leaves behind, and (f) = (e) − 0.27 × (d)
+is what is left after blending in the best share of (d). Panel (g) maps where that made the
+residual smaller (purple) or larger (orange): smaller at 56 % of pixels, mean absolute residual
+11.2 → 10.0 mm. The star marks the location of the worked example in the text panel.*
 
 | | residual RMS, mm line of sight, plane removed |
 |---|---:|
-| uncorrected | 19.5 |
-| linear interpolation | 15.1 |
-| motion-aware, weight 0.4 (default) | **14.7** |
-| motion-aware, weight 0.5 | 15.5 |
-| motion-aware, weight 1.0 | 22.6 |
-| best weight, 0.22 | 14.2 |
+| uncorrected | 19.1 |
+| linear interpolation | 14.6 |
+| motion-aware, weight 0.4 (default) | **13.7** |
+| motion-aware, weight 0.5 | 14.4 |
+| motion-aware, weight 1.0 | 21.3 |
+| best weight, 0.27 | 13.3 |
+
+Scored on the mainland only: Santa Catalina island is a separate unwrapping component
+whose offset to the mainland is arbitrary.
 
 The extra term that motion-aware interpolation adds correlates with what the linear
-correction leaves behind (r = +0.34, slope +0.23; slope +0.41 at scales below 15 km), so
+correction leaves behind (r = +0.41, slope +0.26; slope +0.42 at scales below 15 km), so
 the skill is real, and at face value it makes the interferogram worse than no correction
 at all. One interferogram is an anecdote, but it agrees with GNSS on both points.
 
