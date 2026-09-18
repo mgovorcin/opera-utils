@@ -174,6 +174,11 @@ product of frame F18904 (Los Angeles basin), 2 to 26 October 2020, both acquired
 
 ![interferogram test](img/tropo-motion/insar_test.jpg)
 
+*(c) is what the linear correction leaves; (d) is the only thing the motion-aware method adds;
+(e) = (c) − 0.22 × (d). Panel (g) maps where that made the residual smaller (green) or larger
+(pink): smaller at 56 % of pixels, mean absolute residual 11.5 → 10.5 mm. Panel (h) compares
+the two distributions.*
+
 | | residual RMS, mm line of sight, plane removed |
 |---|---:|
 | uncorrected | 19.5 |
