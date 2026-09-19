@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased](https://github.com/opera-adt/opera-utils/compare/v0.23.0...HEAD)
 
+### Added
+
+- `tropo-apply`: optional GNSS-guided refinement (`gnss_ztd_file=...`), which adds a kriged field of (GNSS - model) zenith delay residuals, relative to the reference date, to the weather-model correction; without the option the output is unchanged. New command `tropo-gnss-download` builds the GNSS table from Nevada Geodetic Laboratory 5-minute products.
+
 ## [0.23.0](https://github.com/opera-adt/opera-utils/compare/v0.22.1...v0.23.0) - 2025-06-16
 
 ### Added

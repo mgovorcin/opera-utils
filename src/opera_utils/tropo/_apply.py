@@ -7,14 +7,17 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import rioxarray as rxr
 import xarray as xr
+from pyproj import Transformer
 from rasterio.enums import Resampling
 from scipy.interpolate import RegularGridInterpolator
 from tqdm.auto import tqdm
 
 from opera_utils import get_dates, sort_files_by_date
 
+from ._gnss import gnss_residual_field, load_gnss_ztd, station_residual_difference
 from ._helpers import _open_2d
 
 logger = logging.getLogger(__name__)
@@ -84,6 +87,52 @@ def _height_to_dem_surface(
     return out
 
 
+GNSS_GRID_SPACING_M = 500.0
+
+
+def _gnss_zenith_field(
+    gnss: pd.DataFrame,
+    ds: xr.Dataset,
+    ds_ref: xr.Dataset,
+    when: pd.Timestamp,
+    when_ref: pd.Timestamp,
+    dem: xr.DataArray,
+) -> tuple[np.ndarray, dict]:
+    """Kriged (GNSS - model) zenith residual, date minus reference, on the DEM grid.
+
+    The field varies over kilometers, so it is kriged on a grid of about
+    `GNSS_GRID_SPACING_M` and interpolated to the DEM pixels.
+    """
+    residuals = station_residual_difference(
+        gnss, ds.total_delay, when, ds_ref.total_delay, when_ref
+    )
+    res_m = abs(float(dem.x[1] - dem.x[0]))
+    crs = dem.rio.crs
+    if crs is not None and crs.is_geographic:
+        res_m *= 111_000.0
+    stride = max(1, int(GNSS_GRID_SPACING_M / res_m))
+    rows = np.unique(np.r_[np.arange(0, dem.shape[0], stride), dem.shape[0] - 1])
+    cols = np.unique(np.r_[np.arange(0, dem.shape[1], stride), dem.shape[1] - 1])
+    xx, yy = np.meshgrid(dem.x.values[cols], dem.y.values[rows])
+    if crs is not None and not crs.is_geographic:
+        lon, lat = Transformer.from_crs(crs, "epsg:4326", always_xy=True).transform(
+            xx, yy
+        )
+    else:
+        lon, lat = xx, yy
+    coarse, info = gnss_residual_field(residuals, lat, lon)
+    if info["n_stations"] == 0 or not np.any(coarse):
+        return np.zeros(dem.shape, dtype="float32"), info
+    rgi = RegularGridInterpolator(
+        (rows, cols), coarse, bounds_error=False, fill_value=None
+    )
+    rr, cc = np.meshgrid(
+        np.arange(dem.shape[0]), np.arange(dem.shape[1]), indexing="ij"
+    )
+    full = rgi(np.column_stack([rr.ravel(), cc.ravel()])).reshape(dem.shape)
+    return full.astype("float32"), info
+
+
 def _compute_reference_correction(
     first_cropped: Path,
     dem_path: Path,
@@ -138,6 +187,8 @@ def _apply_one(
     ref_corr_path: Path | None,
     ref_date_str: str | None,
     fmt: str = "%Y%m%dT%H%M%S",
+    gnss_ztd_file: Path | None = None,
+    ref_cropped_file: Path | None = None,
 ) -> tuple[str, str]:
     """Worker for one date. Returns (date_str, status)."""
     try:
@@ -153,6 +204,19 @@ def _apply_one(
         zenith_delay_2d = _height_to_dem_surface(
             ds.total_delay, dem, method=interp_method
         )
+        gnss_info: dict = {}
+        if gnss_ztd_file is not None and ref_cropped_file is not None:
+            # Add what GNSS says the model is missing, relative to the reference date
+            ds_ref = xr.open_dataset(ref_cropped_file, engine="h5netcdf")
+            field, gnss_info = _gnss_zenith_field(
+                load_gnss_ztd(gnss_ztd_file),
+                ds,
+                ds_ref,
+                pd.Timestamp(get_dates(cropped_file, fmt=fmt)[0]),
+                pd.Timestamp(get_dates(ref_cropped_file, fmt=fmt)[0]),
+                dem,
+            )
+            zenith_delay_2d = zenith_delay_2d + field
         if los_up.shape != zenith_delay_2d.shape:
             # reproject/align LOS raster to dem grid just in case
             los_up = los_up.rio.reproject_match(zenith_delay_2d)
@@ -175,6 +239,9 @@ def _apply_one(
         }
         if ref_date_str is not None:
             attrs["reference_date"] = ref_date_str
+        if gnss_info:
+            attrs["gnss_guided"] = "model + kriged (GNSS - model) residual"
+            attrs.update({f"gnss_{k}": float(v) for k, v in gnss_info.items()})
 
         los_correction.rio.update_attrs(attrs, inplace=True)
         los_correction.rio.to_raster(output_file, **GTIFF_KWARGS)
@@ -199,6 +266,7 @@ def apply_tropo(
     interp_method: str = "linear",
     subtract_first_date: bool = True,
     num_workers: int = 2,
+    gnss_ztd_file: Path | None = None,
 ) -> None:
     """Apply tropospheric corrections using DEM and LOS geometry (parallel).
 
@@ -220,8 +288,22 @@ def apply_tropo(
     num_workers : int
         Number of processes.
         Default is 2.
+    gnss_ztd_file : Path, optional
+        CSV of GNSS zenith total delays at the acquisition times (columns
+        `id, lat, lon, height, datetime, ztd`; see `download_ngl_ztd`).  If given,
+        the kriged difference between GNSS and the model is added to the model
+        correction of every date, relative to the first date.  The result equals
+        the model correction where there are no stations.  Requires
+        `subtract_first_date=True`, because per-station biases only cancel between
+        dates.  Default: None, the model correction alone.
 
     """
+    if gnss_ztd_file is not None and not subtract_first_date:
+        msg = (
+            "gnss_ztd_file requires subtract_first_date=True: GNSS - model residuals"
+            " carry constant per-station biases that only cancel between dates"
+        )
+        raise ValueError(msg)
     if not cropped_tropo_list:
         msg = "No inputs provided."
         raise ValueError(msg)
@@ -240,6 +322,7 @@ def apply_tropo(
 
     ref_corr_path: Path | None = None
     ref_date_str: str | None = None
+    ref_cropped_file: Path | None = None
 
     # Precompute reference correction once if requested
     if subtract_first_date:
@@ -251,6 +334,7 @@ def apply_tropo(
             interp_method,
             output_dir,
         )
+        ref_cropped_file = Path(files_sorted[0])
         # Shift to ignore the first reference date now
         dates_sorted = dates_sorted[1:]
         files_sorted = files_sorted[1:]
@@ -277,6 +361,8 @@ def apply_tropo(
                 ref_corr_path,
                 ref_date_str,
                 fmt=fmt,
+                gnss_ztd_file=gnss_ztd_file,
+                ref_cropped_file=ref_cropped_file,
             )
             for cropped_file, out_file in zip(files_sorted, out_paths, strict=True)
         ]

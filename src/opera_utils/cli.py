@@ -163,9 +163,11 @@ def cli_app() -> None:
     try:
         from opera_utils.tropo._apply import apply_tropo
         from opera_utils.tropo._crop import crop_tropo
+        from opera_utils.tropo._gnss import download_ngl_ztd
 
         cli_dict["tropo-crop"] = crop_tropo
         cli_dict["tropo-apply"] = apply_tropo
+        cli_dict["tropo-gnss-download"] = download_ngl_ztd
 
     except ImportError:
         pass
