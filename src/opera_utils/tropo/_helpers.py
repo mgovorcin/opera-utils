@@ -146,9 +146,13 @@ def _bracketing_change(ds0: xr.Dataset, ds1: xr.Dataset, height: float = 0.0) ->
     change of the wet and of the hydrostatic delay at the height level nearest
     `height` [m].  Time interpolation cannot resolve what happens between the
     two products, so this change is a measure of how uncertain the interpolated
-    delay is.  Over one Sentinel-1 frame it correlated at 0.83 with the error of
-    the interpolated delay against GNSS (zenith error ~ 1.5 mm + 0.55 x change).
-    It ranks epochs; the scale of the error depends on the region.
+    delay is.  On four Sentinel-1 frames (Los Angeles, Puget Sound twice,
+    Houston; 179 dates) the wet change at GNSS stations correlated at 0.59 to
+    0.83 with the zenith error of the interpolated delay against GNSS, and one
+    rule fitted to all of them, error ~ 2.35 mm + 0.46 x change, ranked the
+    dates inside every frame.  The calmest third of dates had 4 to 5 mm of
+    error, the most changeable third 8 to 9 mm.  Use it to rank epochs; the
+    exact scale is regional.
 
     Keys: `bracketing_wet_change_m`, `bracketing_hydrostatic_change_m`,
     `bracketing_change_height_m`.
