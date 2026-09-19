@@ -92,10 +92,17 @@ Only about 6 % of the contiguous US has its three nearest stations within 15 km 
 (15 % within 20 km, 41 % within 30 km): coastal California, the Bay Area, Puget Sound, parts
 of Nevada and Utah, Houston, and scattered clusters.
 
+## A second frame
+
+Puget Sound, DISP-S1 frame F03321 (14:20 UTC), 27 dates, 51 stations at a median spacing of 15.7 km: what the
+model misses at held-out stations falls from 6.27 to 4.46 mm (**−29 %**) with the kriged residual. Organised
+frontal weather has a longer correlation length than the Los Angeles marine layer, so the spacing a network
+needs is regional; the hybrid's fallback to the model is what makes it safe to apply without knowing which.
+
 ## Limits
 
-* **One scene.** Its moisture contrast was unusually sharp, so its correlation length was
-  short; smoother weather may tolerate a sparser network. 15 km is a first estimate.
+* **Two frames.** In Los Angeles the benefit needed stations within about 15 km; at Puget Sound 16 km spacing
+  gave 29 %. The density a region needs has to be measured, not assumed.
 * GNSS zenith delay averages over a cone of sky, and the radar itself was 8.8 mm from GNSS
   at the stations, so the residuals above are near the floor of the comparison.
 * Final 5-minute solutions arrive with about two weeks' latency, rapid ones the next day.
