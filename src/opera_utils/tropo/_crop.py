@@ -16,6 +16,7 @@ from tqdm import tqdm
 from ._helpers import (
     MissingTropoError,
     _bracket,
+    _bracketing_change,
     _build_tropo_index,
     _create_total_delay,
     _interp_in_time,
@@ -90,6 +91,8 @@ def _process_one_datetime(
             ds1.time.to_pandas().item(),
             dt_pandas,
         )
+        # How much changed between the two products: an uncertainty measure
+        td_interp["total_delay"].attrs.update(_bracketing_change(ds0, ds1))
     else:
         idx = tropo_idx_series.index.get_indexer([dt_pandas], method="nearest")[0]
         closest_url = tropo_idx_series.values[idx]

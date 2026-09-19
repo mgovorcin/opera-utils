@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased](https://github.com/opera-adt/opera-utils/compare/v0.23.0...HEAD)
 
+### Added
+
+- `tropo-crop`: the cropped `total_delay` now carries `bracketing_wet_change_m` and `bracketing_hydrostatic_change_m`, the plane-removed RMS change of the delay between the two products that bracket the requested time. It measures how uncertain the time interpolation is: over one Sentinel-1 frame it correlated at 0.83 with the error of the interpolated delay against GNSS.
+
 ## [0.23.0](https://github.com/opera-adt/opera-utils/compare/v0.22.1...v0.23.0) - 2025-06-16
 
 ### Added

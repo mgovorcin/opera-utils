@@ -10,6 +10,7 @@ import xarray as xr
 from opera_utils.tropo._helpers import (
     MissingTropoError,
     _bracket,
+    _bracketing_change,
     _build_tropo_index,
     _create_total_delay,
     _interp_in_time,
@@ -141,3 +142,51 @@ class TestInterpInTime:
         t1 = pd.Timestamp("2020-01-01T06:00:00")
         out = _interp_in_time(ds0, ds1, t0, t1, t0)  # t == t0 -> weight 0
         np.testing.assert_allclose(out["total_delay"].values, 2.0)
+
+
+class TestBracketingChange:
+    @staticmethod
+    def _ds(wet, hyd, time="2020-01-01T00:00"):
+        h = np.array([0.0, 1000.0, 3000.0])
+        w = np.broadcast_to(wet, (h.size, *wet.shape)).copy()
+        hy = np.broadcast_to(hyd, (h.size, *hyd.shape)).copy()
+        return xr.Dataset(
+            {
+                "wet_delay": (("time", "height", "latitude", "longitude"), w[None]),
+                "hydrostatic_delay": (
+                    ("time", "height", "latitude", "longitude"),
+                    hy[None],
+                ),
+            },
+            coords={
+                "time": [np.datetime64(time)],
+                "height": h,
+                "latitude": np.arange(wet.shape[0]),
+                "longitude": np.arange(wet.shape[1]),
+            },
+        )
+
+    def test_uniform_change_is_zero_after_plane_removal(self):
+        a = np.full((6, 8), 0.10)
+        out = _bracketing_change(self._ds(a, a), self._ds(a + 0.02, a - 0.01))
+        assert out["bracketing_wet_change_m"] == pytest.approx(0.0, abs=1e-9)
+        assert out["bracketing_hydrostatic_change_m"] == pytest.approx(0.0, abs=1e-9)
+        assert out["bracketing_change_height_m"] == 0.0
+
+    def test_structured_change_is_measured(self):
+        rng = np.random.default_rng(0)
+        base = np.full((6, 8), 0.10)
+        bump = 0.01 * rng.standard_normal((6, 8))
+        out = _bracketing_change(self._ds(base, base), self._ds(base + bump, base))
+        yy, xx = np.mgrid[:6, :8]
+        a = np.column_stack([np.ones(48), yy.ravel(), xx.ravel()])
+        c, *_ = np.linalg.lstsq(a, bump.ravel(), rcond=None)
+        assert out["bracketing_wet_change_m"] == pytest.approx(
+            np.sqrt(np.mean((bump.ravel() - a @ c) ** 2))
+        )
+        assert out["bracketing_hydrostatic_change_m"] == pytest.approx(0.0, abs=1e-9)
+
+    def test_nearest_height_level_is_used(self):
+        a = np.full((4, 4), 0.1)
+        out = _bracketing_change(self._ds(a, a), self._ds(a, a), height=1200.0)
+        assert out["bracketing_change_height_m"] == 1000.0
