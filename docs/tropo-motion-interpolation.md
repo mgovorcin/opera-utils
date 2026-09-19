@@ -197,9 +197,15 @@ correction leaves behind (r = +0.41, slope +0.26; slope +0.42 at scales below 15
 the skill is real, and at face value it makes the interferogram worse than no correction
 at all. One interferogram is an anecdote, but it agrees with GNSS on both points.
 
+## A second frame
+
+Puget Sound, DISP-S1 frame F03321 (14:20 UTC), 27 dates in 2020–2021, scored against 51 GNSS stations through
+the library code path: linear 6.27 mm, motion-aware at the default weight **5.70 mm (−9 %)**, at full weight
+6.84 mm (+9 %). The weight the data ask for there is 0.41.
+
 ## Limits
 
-* Ten hand-picked dates over one region. Not a climatology.
+* Ten hand-picked dates over one region for the main test, plus one interferogram and one further frame. Not a climatology.
 * GNSS zenith delay averages over a cone of sky and is smoothed in time by the
   processing filter, which lowers the fitted slope. The best weight for an
   instantaneous SAR acquisition may be higher than 0.5.
