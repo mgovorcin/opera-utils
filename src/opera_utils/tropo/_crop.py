@@ -14,6 +14,13 @@ import xarray as xr
 from rasterio.warp import transform_bounds
 from tqdm import tqdm
 
+from ._guide import (
+    guide_radar_times,
+    interp_in_time_guided,
+    load_era5_tcwv,
+    nexrad_path,
+    read_nexrad_echo_fraction,
+)
 from ._helpers import (
     MissingTropoError,
     _bracket,
@@ -38,9 +45,12 @@ def _process_one_datetime(
     output_dir: Path,
     skip_time_interpolation: bool,
     debug: bool = False,
-    time_interpolation: Literal["linear", "motion"] = "linear",
+    time_interpolation: Literal["linear", "motion", "guided"] = "linear",
     motion_weight: float = DEFAULT_MOTION_WEIGHT,
     motion_margin_deg: float = DEFAULT_MOTION_MARGIN_DEG,
+    era5_file: Path | str | None = None,
+    nexrad_dir: Path | str | None = None,
+    guide_weights: dict[str, float] | None = None,
 ) -> tuple[datetime, str]:
     """Worker: process one datetime and write output file.
 
@@ -64,12 +74,19 @@ def _process_one_datetime(
     debug : bool
         Debug mode. If True, write debug info during processing.
         Default: False.
-    time_interpolation : {"linear", "motion"}
+    time_interpolation : {"linear", "motion", "guided"}
         How to interpolate between the two bracketing products.
     motion_weight : float
         Weight of the motion-aware prediction when `time_interpolation="motion"`.
     motion_margin_deg : float
-        Extra margin, in degrees, read around the bounds to track the motion.
+        Extra margin, in degrees, read around the bounds to track the motion
+        ("motion" and "guided").
+    era5_file : Path | str | None
+        Hourly ERA5 total column water vapour for `time_interpolation="guided"`.
+    nexrad_dir : Path | str | None
+        Directory of NEXRAD n0q composites for `time_interpolation="guided"`.
+    guide_weights : dict | None
+        Override of the guide weights for `time_interpolation="guided"`.
 
     Returns
     -------
@@ -92,7 +109,7 @@ def _process_one_datetime(
             return (dt, "missing")
 
         read_lat, read_lon = lat_bounds, lon_bounds
-        if time_interpolation == "motion":
+        if time_interpolation in ("motion", "guided"):
             # Weather moves ~300 km in 6 h: track it on a wider area, trim below
             read_lat = (
                 min(lat_bounds[0] + motion_margin_deg, 90.0),
@@ -115,6 +132,35 @@ def _process_one_datetime(
         if time_interpolation == "motion":
             td_interp = interp_in_time_motion(
                 ds0, ds1, t0, t1, dt_pandas, motion_weight=motion_weight
+            ).sel(
+                latitude=slice(lat_bounds[0], lat_bounds[1]),
+                longitude=slice(lon_bounds[0], lon_bounds[1]),
+            )
+        elif time_interpolation == "guided":
+            assert era5_file is not None
+            lat, lon = ds0.latitude.values, ds0.longitude.values
+            era5 = load_era5_tcwv(era5_file)
+            radar = None
+            if nexrad_dir is not None:
+                radar = {}
+                for x in guide_radar_times(
+                    t0.to_pydatetime(), t1.to_pydatetime(), dt_pandas.to_pydatetime()
+                ):
+                    path = nexrad_path(nexrad_dir, x)
+                    radar[x] = (
+                        read_nexrad_echo_fraction(path, lat, lon)
+                        if path.exists()
+                        else None
+                    )
+            td_interp = interp_in_time_guided(
+                ds0,
+                ds1,
+                t0,
+                t1,
+                dt_pandas,
+                era5_tcwv=era5,
+                radar=radar,
+                weights=guide_weights,
             ).sel(
                 latitude=slice(lat_bounds[0], lat_bounds[1]),
                 longitude=slice(lon_bounds[0], lon_bounds[1]),
@@ -152,9 +198,12 @@ def crop_tropo(
     height_max: float = 10000.0,
     margin_deg: float = 0.3,
     num_workers: int = 2,
-    time_interpolation: Literal["linear", "motion"] = "linear",
+    time_interpolation: Literal["linear", "motion", "guided"] = "linear",
     motion_weight: float = DEFAULT_MOTION_WEIGHT,
     motion_margin_deg: float = DEFAULT_MOTION_MARGIN_DEG,
+    era5_file: Path | str | None = None,
+    nexrad_dir: Path | str | None = None,
+    guide_weights: dict[str, float] | None = None,
 ) -> None:
     """Crop OPERA TROPO products to AOI and interpolate to specific datetimes.
 
@@ -178,30 +227,51 @@ def crop_tropo(
         Additional margin in degrees around AOI bounds.
     num_workers : int
         Processes to use. Default: 2
-    time_interpolation : {"linear", "motion"}
+    time_interpolation : {"linear", "motion", "guided"}
         How to interpolate between the two products bracketing each datetime.
         "linear" (default) blends them pixel by pixel.  "motion" estimates how
         the wet delay field moved between them and interpolates along that
-        motion, so that weather fronts are displaced instead of faded out; the
-        hydrostatic delay is still interpolated linearly.
-        See `opera_utils.tropo.interp_in_time_motion`.
+        motion, so that weather fronts are displaced instead of faded out.
+        "guided" corrects the straight line with hourly ERA5 column water vapour
+        and, where available, NEXRAD radar echoes and their motion; it needs
+        `era5_file` and optionally `nexrad_dir`.  In every mode the hydrostatic
+        delay is interpolated linearly.
+        See `opera_utils.tropo.interp_in_time_motion` and
+        `opera_utils.tropo.interp_in_time_guided`.
     motion_weight : float
         Only for "motion": weight in [0, 1] of the motion-aware prediction
         against the linear one.  0 is linear interpolation.
     motion_margin_deg : float
-        Only for "motion": additional margin in degrees, on top of `margin_deg`,
-        read around the AOI to track the motion.  The output is trimmed back to
-        the AOI plus `margin_deg`.  Margins below about 3 degrees leave too little
-        context and give no benefit over linear interpolation.
+        Only for "motion" and "guided": additional margin in degrees, on top of
+        `margin_deg`, read around the AOI to track the motion.  The output is
+        trimmed back to the AOI plus `margin_deg`.  Margins below about 3 degrees
+        leave too little context and give no benefit over linear interpolation.
+    era5_file : Path | str | None
+        Only for "guided": hourly ERA5 total column water vapour covering the
+        AOI plus margins and every bracketing interval: a netCDF file or a
+        directory of them (see `opera_utils.tropo.download_guide_inputs`).
+    nexrad_dir : Path | str | None
+        Only for "guided": directory of NEXRAD n0q composites (see
+        `opera_utils.tropo.download_guide_inputs`).  Without it, or for dates it
+        does not cover, only the ERA5 term is used.  Contiguous US only.
+    guide_weights : dict | None
+        Only for "guided": override of `opera_utils.tropo.DEFAULT_GUIDE_WEIGHTS`.
 
     """
-    if time_interpolation not in ("linear", "motion"):
+    if time_interpolation not in ("linear", "motion", "guided"):
         msg = (
-            f"time_interpolation must be 'linear' or 'motion', got {time_interpolation}"
+            "time_interpolation must be 'linear', 'motion' or 'guided', got"
+            f" {time_interpolation}"
         )
         raise ValueError(msg)
-    if time_interpolation == "motion" and skip_time_interpolation:
-        msg = "time_interpolation='motion' cannot be used with skip_time_interpolation"
+    if time_interpolation != "linear" and skip_time_interpolation:
+        msg = (
+            f"time_interpolation='{time_interpolation}' cannot be used with"
+            " skip_time_interpolation"
+        )
+        raise ValueError(msg)
+    if time_interpolation == "guided" and era5_file is None:
+        msg = "time_interpolation='guided' needs era5_file (hourly ERA5 TCWV)"
         raise ValueError(msg)
     if not 0.0 <= motion_weight <= 1.0:
         msg = f"motion_weight must be in [0, 1], got {motion_weight}"
@@ -255,6 +325,9 @@ def crop_tropo(
                         time_interpolation,
                         motion_weight,
                         motion_margin_deg,
+                        era5_file,
+                        nexrad_dir,
+                        guide_weights,
                     )
                 )
 
@@ -284,6 +357,9 @@ def crop_tropo(
                 time_interpolation=time_interpolation,
                 motion_weight=motion_weight,
                 motion_margin_deg=motion_margin_deg,
+                era5_file=era5_file,
+                nexrad_dir=nexrad_dir,
+                guide_weights=guide_weights,
             )
 
     logger.info(

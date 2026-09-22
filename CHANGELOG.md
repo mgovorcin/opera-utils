@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- `tropo-crop`: optional ERA5 + NEXRAD guided time interpolation of the wet delay (`time_interpolation="guided"`, `era5_file`, `nexrad_dir`), which corrects the straight line between the 6-hourly TROPO products with hourly ERA5 column water vapour and radar echoes; linear interpolation stays the default. New command `tropo-guide-download` and functions `interp_in_time_guided`, `download_guide_inputs`, `download_era5_tcwv`, `download_nexrad_n0q`, `load_era5_tcwv`, `read_nexrad_echo_fraction` in `opera_utils.tropo`.
 - `tropo-crop`: optional motion-aware time interpolation of the wet delay (`time_interpolation="motion"`), which moves weather fronts between the 6-hourly TROPO products instead of fading them; linear interpolation stays the default. New functions `estimate_flow`, `interpolate_motion`, `interp_in_time_motion` in `opera_utils.tropo`.
 
 ## [0.23.0](https://github.com/opera-adt/opera-utils/compare/v0.22.1...v0.23.0) - 2025-06-16

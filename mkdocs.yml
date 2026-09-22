@@ -52,4 +52,5 @@ nav:
 # trailing slash: that mkdocs-literate-nav knows a summary.md file is in that folder.
 - Code Reference: reference/
 - tropo-motion-interpolation.md
+- tropo-guided-interpolation.md
 - background-theory.md
