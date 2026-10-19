@@ -283,6 +283,11 @@ def reformat_stack(
     elif reference_method in (ReferenceMethod.BORDER, ReferenceMethod.MEDIAN):
         good_pixel_mask = np.asarray(ds.water_mask) == 1
         ref_row = ref_col = None
+    elif reference_method == ReferenceMethod.NONE:
+        # No spatial referencing (e.g. done afterwards by the caller): the rebased stack
+        # is written chunk by chunk without a frame-wide reduction.
+        good_pixel_mask = None
+        ref_row = ref_col = None
     else:
         msg = f"Unknown ReferenceMethod {reference_method}"
         raise ValueError(msg)
